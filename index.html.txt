@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anime Vault PRO</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#020617">
+
+<style>
+*{box-sizing:border-box;font-family:system-ui}
+body{margin:0;background:#020617;color:#e5e7eb;display:flex;justify-content:center}
+.app{max-width:900px;width:100%;padding:14px}
+header{text-align:center;font-size:24px;font-weight:700;margin-bottom:10px}
+
+.hidden{display:none}
+.card{background:#0f172a;padding:12px;border-radius:16px;margin-bottom:12px}
+input,select,button{padding:10px;border:none;border-radius:10px;width:100%;margin-top:6px}
+button{background:#6366f1;color:white;cursor:pointer}
+button.gray{background:#475569}
+button.red{background:#ef4444}
+button:disabled{opacity:.4}
+
+.genres{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.genres label{background:#334155;padding:6px 10px;border-radius:10px;font-size:13px}
+
+.list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.anime{background:#020617;padding:12px;border-radius:14px}
+.tag{background:#334155;padding:4px 8px;border-radius:10px;font-size:12px;margin:2px;display:inline-block}
+
+.top{display:flex;gap:8px;flex-wrap:wrap}
+.top button{flex:1}
+.stats{text-align:center;margin:8px 0}
+</style>
+</head>
+
+<body>
+<div class="app">
+<header>🎌 Anime Vault PRO</header>
+
+<div id="lock" class="card">
+ <h3>🔐 Select Mode</h3>
+ <button id="guestBtn" class="gray">Guest (View Only)</button>
+ <hr>
+ <input id="pin" type="password" maxlength="4" placeholder="Owner PIN">
+ <button id="ownerBtn">Owner Login</button>
+ <p style="font-size:12px;opacity:.7">Default PIN: 1234</p>
+</div>
+
+<div id="main" class="hidden">
+
+<div class="card">
+ <input id="name" placeholder="Anime name">
+ <input id="rating" type="number" step="0.1" placeholder="Rating 0-10">
+ <select id="status">
+  <option value="">Status</option>
+  <option>Watching</option>
+  <option>Completed</option>
+  <option>Planned</option>
+ </select>
+
+ <div class="genres">
+  <label><input type="checkbox" value="Action"> Action</label>
+  <label><input type="checkbox" value="Romance"> Romance</label>
+  <label><input type="checkbox" value="Comedy"> Comedy</label>
+  <label><input type="checkbox" value="Fantasy"> Fantasy</label>
+  <label><input type="checkbox" value="Isekai"> Isekai</label>
+  <label><input type="checkbox" value="Rom-Com"> Rom-Com</label>
+  <label><input type="checkbox" value="Shonen"> Shonen</label>
+  <label><input type="checkbox" value="Seinen"> Seinen</label>
+  <label><input type="checkbox" value="Ecchi (Hint)"> Ecchi (Hint)</label>
+ </div>
+
+ <button id="addBtn">Add / Update</button>
+</div>
+
+<div class="card top">
+ <input id="search" placeholder="Search anime">
+ <button id="sortBtn" class="gray">Sort ⭐</button>
+</div>
+
+<div class="card top">
+ <button id="exportBtn" class="gray">📤 Export</button>
+ <input type="file" id="importFile" class="hidden">
+ <button id="importBtn" class="gray">📥 Import</button>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="list" id="list"></div>
+
+</div>
+</div>
+
+<script>
+// 🔌 PWA SERVICE WORKER
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+
+let OWNER=false;
+if(!localStorage.getItem("vaultPin")) localStorage.setItem("vaultPin","1234");
+
+let data=JSON.parse(localStorage.getItem("animeVault"))||{};
+const $=id=>document.getElementById(id);
+const save=()=>localStorage.setItem("animeVault",JSON.stringify(data));
+
+$("guestBtn").onclick=()=>{OWNER=false;start()};
+$("ownerBtn").onclick=()=>{
+ if($("pin").value===localStorage.getItem("vaultPin")){
+  OWNER=true;start();
+ } else alert("Wrong PIN");
+};
+
+function start(){
+ $("lock").classList.add("hidden");
+ $("main").classList.remove("hidden");
+ $("addBtn").disabled=!OWNER;
+ $("importBtn").disabled=!OWNER;
+ render();
+}
+
+function genres(){
+ return [...document.querySelectorAll(".genres input:checked")].map(x=>x.value);
+}
+
+$("addBtn").onclick=()=>{
+ if(!OWNER)return;
+ let n=$("name").value.trim();
+ let r=parseFloat($("rating").value);
+ let s=$("status").value;
+ let g=genres();
+ if(!n||isNaN(r)||r<0||r>10||!s||g.length===0){
+  alert("Fill all fields");return;
+ }
+ data[n]={rating:r,status:s,genres:g};
+ save();render();
+};
+
+$("sortBtn").onclick=()=>{
+ data=Object.fromEntries(Object.entries(data).sort((a,b)=>b[1].rating-a[1].rating));
+ save();render();
+};
+
+$("search").oninput=e=>{
+ let v=e.target.value.toLowerCase();
+ document.querySelectorAll(".anime").forEach(c=>{
+  c.style.display=c.innerText.toLowerCase().includes(v)?"block":"none";
+ });
+};
+
+$("exportBtn").onclick=()=>{
+ let blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="anime-vault-backup.json";
+ a.click();
+};
+
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=e=>{
+ if(!OWNER)return;
+ let r=new FileReader();
+ r.onload=()=>{data=JSON.parse(r.result);save();render()};
+ r.readAsText(e.target.files[0]);
+};
+
+function render(){
+ $("list").innerHTML="";
+ let t=0,sum=0;
+ for(let n in data){
+  let a=data[n];t++;sum+=a.rating;
+  $("list").innerHTML+=`
+  <div class="anime">
+   ${a.genres.map(g=>`<span class="tag">${g}</span>`).join("")}
+   <span class="tag">${a.status}</span>
+   <h3>${n}</h3>
+   <p>⭐ ${a.rating}</p>
+   ${OWNER?`<button class="red" onclick="del('${n}')">Delete</button>`:""}
+  </div>`;
+ }
+ $("stats").innerText=t?`Total: ${t} | Avg: ${(sum/t).toFixed(2)}`:"No anime";
+}
+
+window.del=n=>{if(!OWNER)return;delete data[n];save();render()}
+
+});
+</script>
+</body>
+</html>
